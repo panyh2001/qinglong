@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction, Application } from 'express';
+import express, { Request, Response, NextFunction, Application } from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import routes from '../api';
@@ -13,10 +13,12 @@ import UserService from '../services/user';
 import handler from 'serve-handler';
 import * as Sentry from '@sentry/node';
 import { EnvModel } from '../data/env';
+import { errors } from 'celebrate';
 
 export default ({ app }: { app: Application }) => {
   app.enable('trust proxy');
   app.use(cors());
+  app.use(`${config.api.prefix}/static`, express.static(config.uploadPath));
 
   app.use((req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/open')) {
@@ -78,13 +80,6 @@ export default ({ app }: { app: Application }) => {
     ) {
       return next();
     }
-    const remoteAddress = req.socket.remoteAddress;
-    if (
-      remoteAddress === '::ffff:127.0.0.1' &&
-      originPath === '/api/crons/status'
-    ) {
-      return next();
-    }
 
     const data = fs.readFileSync(config.authConfigFile, 'utf8');
     if (data) {
@@ -133,7 +128,7 @@ export default ({ app }: { app: Application }) => {
     next(err);
   });
 
-  app.use(Sentry.Handlers.errorHandler());
+  app.use(errors());
 
   app.use(
     (
@@ -151,6 +146,29 @@ export default ({ app }: { app: Application }) => {
       return next(err);
     },
   );
+
+  app.use(
+    (
+      err: Error & { errors: any[] },
+      req: Request,
+      res: Response,
+      next: NextFunction,
+    ) => {
+      if (err.name.includes('Sequelize')) {
+        return res
+          .status(500)
+          .send({
+            code: 400,
+            message: `${err.name} ${err.message}`,
+            validation: err.errors,
+          })
+          .end();
+      }
+      return next(err);
+    },
+  );
+
+  app.use(Sentry.Handlers.errorHandler());
 
   app.use(
     (

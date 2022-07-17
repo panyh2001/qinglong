@@ -95,7 +95,7 @@ const CronLogModal = ({
       <>
         {(executing || loading) && <Loading3QuartersOutlined spin />}
         {!executing && !loading && <CheckCircleOutlined />}
-        <span style={{ marginLeft: 5 }}>日志-{cron && cron.name}</span>{' '}
+        <span style={{ marginLeft: 5 }}>{cron && cron.name}</span>
       </>
     );
   };
@@ -123,8 +123,6 @@ const CronLogModal = ({
       centered
       className="log-modal"
       bodyStyle={{
-        overflowY: 'auto',
-        maxHeight: 'calc(80vh - var(--vh-offset, 0px))',
         minHeight: '300px',
       }}
       forceRender

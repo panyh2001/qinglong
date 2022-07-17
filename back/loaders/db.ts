@@ -8,6 +8,7 @@ import { AppModel } from '../data/open';
 import { AuthModel } from '../data/auth';
 import { sequelize } from '../data';
 import { fileExist } from '../config/util';
+import { SubscriptionModel } from '../data/subscription';
 import config from '../config';
 
 export default async () => {
@@ -17,7 +18,7 @@ export default async () => {
     await AppModel.sync();
     await AuthModel.sync();
     await EnvModel.sync();
-    await sequelize.sync();
+    await SubscriptionModel.sync();
 
     // try {
     //   const queryInterface = sequelize.getQueryInterface();

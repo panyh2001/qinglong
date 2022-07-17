@@ -93,7 +93,7 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
   const getScripts = () => {
     setLoading(true);
     request
-      .get(`${config.apiPrefix}scripts/files`)
+      .get(`${config.apiPrefix}scripts`)
       .then((data) => {
         setData(data.data);
         setFilterData(data.data);
@@ -104,7 +104,7 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
 
   const getDetail = (node: any) => {
     request
-      .get(`${config.apiPrefix}scripts/${node.value}?path=${node.parent || ''}`)
+      .get(`${config.apiPrefix}scripts/${node.title}?path=${node.parent || ''}`)
       .then((data) => {
         setValue(data.data);
       });
@@ -117,7 +117,6 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
       const obj = {
         node: {
           title: s,
-          value: s,
           key: p ? vkey : s,
           parent: p,
         },
@@ -135,7 +134,7 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
     const newMode = value ? LangMap[value.slice(-3)] : '';
     setMode(isPhone && newMode === 'typescript' ? 'javascript' : newMode);
     setSelect(node.key);
-    setTitle(node.parent || node.value);
+    setTitle(node.key);
     setCurrentNode(node);
     getDetail(node);
   };
@@ -209,7 +208,7 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
         <>
           确认保存文件
           <Text style={{ wordBreak: 'break-all' }} type="warning">
-            {currentNode.value}
+            {currentNode.title}
           </Text>{' '}
           ，保存后不可恢复
         </>
@@ -222,7 +221,7 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
           request
             .put(`${config.apiPrefix}scripts`, {
               data: {
-                filename: currentNode.value,
+                filename: currentNode.title,
                 path: currentNode.parent || '',
                 content,
               },
@@ -262,7 +261,7 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
         request
           .delete(`${config.apiPrefix}scripts`, {
             data: {
-              filename: currentNode.value,
+              filename: currentNode.title,
               path: currentNode.parent || '',
             },
           })
@@ -278,13 +277,17 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
                 const index = parentNode.children.findIndex(
                   (y) => y.key === currentNode.key,
                 );
-                parentNode.children.splice(index, 1);
-                newData.splice(parentNodeIndex, 1, { ...parentNode });
+                if (index !== -1 && parentNodeIndex !== -1) {
+                  parentNode.children.splice(index, 1);
+                  newData.splice(parentNodeIndex, 1, { ...parentNode });
+                }
               } else {
                 const index = newData.findIndex(
                   (x) => x.key === currentNode.key,
                 );
-                newData.splice(index, 1);
+                if (index !== -1) {
+                  newData.splice(index, 1);
+                }
               }
               setData(newData);
             } else {
@@ -311,21 +314,24 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
   ) => {
     if (filename) {
       const newData = [...data];
-      const _file = { title: filename, key, value: filename, parent: path };
+      const _file = { title: filename, key, parent: path };
       if (path) {
+        // TODO: 更新左侧树数据
         const parentNodeIndex = newData.findIndex((x) => x.key === path);
-        const parentNode = newData[parentNodeIndex];
-        if (parentNode.children && parentNode.children.length > 0) {
-          parentNode.children.unshift(_file);
-        } else {
-          parentNode.children = [_file];
+        if (parentNodeIndex !== -1) {
+          const parentNode = newData[parentNodeIndex];
+          if (parentNode.children && parentNode.children.length > 0) {
+            parentNode.children.unshift(_file);
+          } else {
+            parentNode.children = [_file];
+          }
+          newData.splice(parentNodeIndex, 1, { ...parentNode });
         }
-        newData.splice(parentNodeIndex, 1, { ...parentNode });
       } else {
         newData.unshift(_file);
       }
       setData(newData);
-      onSelect(_file.value, _file);
+      onSelect(_file.title, _file);
       setIsEditing(true);
     }
     setIsAddFileModalVisible(false);
@@ -335,7 +341,7 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
     request
       .post(`${config.apiPrefix}scripts/download`, {
         data: {
-          filename: currentNode.value,
+          filename: currentNode.title,
         },
       })
       .then((_data: any) => {
@@ -343,7 +349,7 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = currentNode.value;
+        a.download = currentNode.title;
         document.documentElement.appendChild(a);
         a.click();
         document.documentElement.removeChild(a);
@@ -367,37 +373,68 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
     }
   }, []);
 
+  const action = (key: string | number) => {
+    switch (key) {
+      case 'save':
+        saveFile();
+        break;
+      case 'exit':
+        cancelEdit();
+        break;
+      default:
+        break;
+    }
+  };
+
+  const menuAction = (key: string | number) => {
+    switch (key) {
+      case 'save':
+        addFile();
+        break;
+      case 'edit':
+        editFile();
+        break;
+      case 'delete':
+        deleteFile();
+        break;
+      default:
+        break;
+    }
+  };
+
   const menu = isEditing ? (
-    <Menu>
-      <Menu.Item key="save" icon={<PlusOutlined />} onClick={saveFile}>
-        保存
-      </Menu.Item>
-      <Menu.Item key="exit" icon={<EditOutlined />} onClick={cancelEdit}>
-        退出编辑
-      </Menu.Item>
-    </Menu>
+    <Menu
+      items={[
+        { label: '保存', key: 'save', icon: <PlusOutlined /> },
+        { label: '退出编辑', key: 'exit', icon: <EditOutlined /> },
+      ]}
+      onClick={({ key, domEvent }) => {
+        domEvent.stopPropagation();
+        action(key);
+      }}
+    />
   ) : (
-    <Menu>
-      <Menu.Item key="add" icon={<PlusOutlined />} onClick={addFile}>
-        新建
-      </Menu.Item>
-      <Menu.Item
-        key="edit"
-        icon={<EditOutlined />}
-        onClick={editFile}
-        disabled={!select}
-      >
-        编辑
-      </Menu.Item>
-      <Menu.Item
-        key="delete"
-        icon={<DeleteOutlined />}
-        onClick={deleteFile}
-        disabled={!select}
-      >
-        删除
-      </Menu.Item>
-    </Menu>
+    <Menu
+      items={[
+        { label: '新建', key: 'add', icon: <PlusOutlined /> },
+        {
+          label: '编辑',
+          key: 'edit',
+          icon: <EditOutlined />,
+          disabled: !select,
+        },
+        {
+          label: '删除',
+          key: 'delete',
+          icon: <DeleteOutlined />,
+          disabled: !select,
+        },
+      ]}
+      onClick={({ key, domEvent }) => {
+        domEvent.stopPropagation();
+        menuAction(key);
+      }}
+    />
   );
 
   return (
@@ -414,6 +451,7 @@ const Script = ({ headerStyle, isPhone, theme, socketMessage }: any) => {
                 dropdownStyle={{ maxHeight: 400, overflow: 'auto' }}
                 treeData={data}
                 placeholder="请选择脚本"
+                fieldNames={{ value: 'key', label: 'title' }}
                 showSearch
                 onSelect={onSelect}
               />,

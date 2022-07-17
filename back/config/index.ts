@@ -15,6 +15,7 @@ const scriptPath = path.join(dataPath, 'scripts/');
 const bakPath = path.join(dataPath, 'bak/');
 const logPath = path.join(dataPath, 'log/');
 const dbPath = path.join(dataPath, 'db/');
+const uploadPath = path.join(dataPath, 'upload/');
 
 const envFile = path.join(configPath, 'env.sh');
 const confFile = path.join(configPath, 'config.sh');
@@ -58,6 +59,7 @@ export default {
   confFile,
   envFile,
   dbPath,
+  uploadPath,
   configPath,
   scriptPath,
   samplePath,
@@ -67,6 +69,7 @@ export default {
     'cookie.sh',
     'crontab.list',
     'env.sh',
+    'token.json',
   ],
   writePathList: [configPath, scriptPath],
   bakPath,

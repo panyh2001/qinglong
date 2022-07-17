@@ -3,8 +3,10 @@ import { Container } from 'typedi';
 import { Logger } from 'winston';
 import * as fs from 'fs';
 import config from '../config';
-import { getFileContentByName } from '../config/util';
+import { getFileContentByName, readDirs } from '../config/util';
+import { join } from 'path';
 const route = Router();
+const blacklist = ['.tmp'];
 
 export default (app: Router) => {
   app.use('/logs', route);
@@ -12,29 +14,11 @@ export default (app: Router) => {
   route.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const logger: Logger = Container.get('logger');
     try {
-      const fileList = fs.readdirSync(config.logPath, 'utf-8');
-      const dirs = [];
-      for (let i = 0; i < fileList.length; i++) {
-        const stat = fs.lstatSync(config.logPath + fileList[i]);
-        if (stat.isDirectory()) {
-          const fileListTmp = fs.readdirSync(
-            `${config.logPath}/${fileList[i]}`,
-            'utf-8',
-          );
-          dirs.push({
-            name: fileList[i],
-            isDir: true,
-            files: fileListTmp.reverse(),
-          });
-        } else {
-          dirs.push({
-            name: fileList[i],
-            isDir: false,
-            files: [],
-          });
-        }
-      }
-      res.send({ code: 200, dirs });
+      const result = readDirs(config.logPath, config.logPath, blacklist);
+      res.send({
+        code: 200,
+        data: result,
+      });
     } catch (e) {
       logger.error('🔥 error: %o', e);
       return next(e);
@@ -42,32 +26,21 @@ export default (app: Router) => {
   });
 
   route.get(
-    '/:dir/:file',
-    async (req: Request, res: Response, next: NextFunction) => {
-      const logger: Logger = Container.get('logger');
-      try {
-        const { dir, file } = req.params;
-        const content = getFileContentByName(
-          `${config.logPath}/${dir}/${file}`,
-        );
-        res.send({ code: 200, data: content });
-      } catch (e) {
-        logger.error('🔥 error: %o', e);
-        return next(e);
-      }
-    },
-  );
-
-  route.get(
     '/:file',
     async (req: Request, res: Response, next: NextFunction) => {
       const logger: Logger = Container.get('logger');
       try {
-        const { file } = req.params;
-        const content = getFileContentByName(`${config.logPath}/${file}`);
+        if (blacklist.includes(req.path)) {
+          return res.send({ code: 403, message: '暂无权限' });
+        }
+        const filePath = join(
+          config.logPath,
+          (req.query.path || '') as string,
+          req.params.file,
+        );
+        const content = getFileContentByName(filePath);
         res.send({ code: 200, data: content });
       } catch (e) {
-        logger.error('🔥 error: %o', e);
         return next(e);
       }
     },

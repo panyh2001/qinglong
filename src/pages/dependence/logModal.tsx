@@ -7,6 +7,7 @@ import {
   CheckCircleOutlined,
 } from '@ant-design/icons';
 import { PageLoading } from '@ant-design/pro-layout';
+import Ansi from 'ansi-to-react';
 
 const DependenceLogModal = ({
   dependence,
@@ -89,17 +90,19 @@ const DependenceLogModal = ({
   }, [dependence]);
 
   useEffect(() => {
-    if (!socketMessage) return;
+    if (!socketMessage || !dependence) return;
     const { type, message, references } = socketMessage;
     if (
       type === 'installDependence' &&
-      message.includes('结束时间') &&
-      references.length > 0
+      references.length > 0 &&
+      references.includes(dependence.id)
     ) {
-      setExecuting(false);
-      setIsRemoveFailed(message.includes('删除失败'));
+      if (message.includes('结束时间')) {
+        setExecuting(false);
+        setIsRemoveFailed(message.includes('删除失败'));
+      }
+      setValue(`${value}${message}`);
     }
-    setValue(`${value}${message}`);
   }, [socketMessage]);
 
   useEffect(() => {
@@ -140,7 +143,7 @@ const DependenceLogModal = ({
               : {}
           }
         >
-          {value}
+          <Ansi>{value}</Ansi>
         </pre>
       )}
     </Modal>

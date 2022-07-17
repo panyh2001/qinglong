@@ -13,6 +13,8 @@ import _ from 'lodash';
 import { spawn } from 'child_process';
 import SockService from './sock';
 import { Op } from 'sequelize';
+import { concurrentRun } from '../config/util';
+import dayjs from 'dayjs';
 
 @Service()
 export default class DependenceService {
@@ -27,7 +29,7 @@ export default class DependenceService {
       return tab;
     });
     const docs = await this.insert(tabs);
-    this.installOrUninstallDependencies(docs);
+    this.installDependenceOneByOne(docs);
     return docs;
   }
 
@@ -47,7 +49,7 @@ export default class DependenceService {
       status: DependenceStatus.installing,
     });
     const newDoc = await this.updateDb(tab);
-    this.installOrUninstallDependencies([newDoc]);
+    this.installDependenceOneByOne([newDoc]);
     return newDoc;
   }
 
@@ -62,7 +64,7 @@ export default class DependenceService {
       { where: { id: ids } },
     );
     const docs = await DependenceModel.findAll({ where: { id: ids } });
-    this.installOrUninstallDependencies(docs, false, force);
+    this.installDependenceOneByOne(docs, false, force);
     return docs;
   }
 
@@ -98,6 +100,20 @@ export default class DependenceService {
     }
   }
 
+  private installDependenceOneByOne(
+    docs: Dependence[],
+    isInstall: boolean = true,
+    force: boolean = false,
+  ) {
+    concurrentRun(
+      docs.map(
+        (dep) => async () =>
+          await this.installOrUninstallDependencies([dep], isInstall, force),
+      ),
+      1,
+    );
+  }
+
   public async reInstall(ids: number[]): Promise<Dependence[]> {
     await DependenceModel.update(
       { status: DependenceStatus.installing, log: [] },
@@ -105,7 +121,7 @@ export default class DependenceService {
     );
 
     const docs = await DependenceModel.findAll({ where: { id: ids } });
-    await this.installOrUninstallDependencies(docs);
+    this.installDependenceOneByOne(docs);
     return docs;
   }
 
@@ -146,21 +162,20 @@ export default class DependenceService {
       )[dependencies[0].type as any];
       const actionText = isInstall ? '安装' : '删除';
       const depIds = dependencies.map((x) => x.id) as number[];
-      const cp = spawn(`${depRunCommand} ${depNames}`, { shell: '/bin/bash' });
-      const startTime = Date.now();
+      const startTime = dayjs();
+
+      const message = `开始${actionText}依赖 ${depNames}，开始时间 ${startTime.format(
+        'YYYY-MM-DD HH:mm:ss',
+      )}\n\n`;
       this.sockService.sendMessage({
         type: socketMessageType,
-        message: `开始${actionText}依赖 ${depNames}，开始时间 ${new Date(
-          startTime,
-        ).toLocaleString()}\n\n`,
+        message,
         references: depIds,
       });
-      await this.updateLog(
-        depIds,
-        `开始${actionText}依赖 ${depNames}，开始时间 ${new Date(
-          startTime,
-        ).toLocaleString()}\n\n`,
-      );
+      await this.updateLog(depIds, message);
+
+      const cp = spawn(`${depRunCommand} ${depNames}`, { shell: '/bin/bash' });
+
       cp.stdout.on('data', async (data) => {
         this.sockService.sendMessage({
           type: socketMessageType,
@@ -190,23 +205,19 @@ export default class DependenceService {
       });
 
       cp.on('close', async (code) => {
-        const endTime = Date.now();
+        const endTime = dayjs();
         const isSucceed = code === 0;
         const resultText = isSucceed ? '成功' : '失败';
 
+        const message = `\n依赖${actionText}${resultText}，结束时间 ${endTime.format(
+          'YYYY-MM-DD HH:mm:ss',
+        )}，耗时 ${endTime.diff(startTime, 'second')} 秒`;
         this.sockService.sendMessage({
           type: socketMessageType,
-          message: `\n依赖${actionText}${resultText}，结束时间 ${new Date(
-            endTime,
-          ).toLocaleString()}，耗时 ${(endTime - startTime) / 1000} 秒`,
+          message,
           references: depIds,
         });
-        await this.updateLog(
-          depIds,
-          `\n依赖${actionText}${resultText}，结束时间 ${new Date(
-            endTime,
-          ).toLocaleString()}，耗时 ${(endTime - startTime) / 1000} 秒`,
-        );
+        await this.updateLog(depIds, message);
 
         let status = null;
         if (isSucceed) {
